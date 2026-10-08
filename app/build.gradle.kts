@@ -2,6 +2,8 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.hilt.android)
 }
 
 android {
@@ -40,25 +42,48 @@ android {
 }
 
 dependencies {
-
+    // Core
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.activity.compose)
+
+    // Compose BOM
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
 
-    // dependencias para la navegacion con jetpack compose.
+    // Navigation Compose
+    implementation(libs.androidx.navigation.compose)
 
-    implementation("androidx.navigation:navigation-compose:2.7.7")
+    // Material Icons Extended
+    implementation(libs.compose.material.icons.core)
+    implementation(libs.compose.material.icons.extended)
 
-    //dependencias para librerias iconos
+    // Room
+    implementation(libs.room.runtime)
+    implementation(libs.room.ktx)
+    ksp(libs.room.compiler)
 
-    implementation("androidx.compose.material:material-icons-core")
-    implementation("androidx.compose.material:material-icons-extended")
+    // Hilt
+    implementation(libs.hilt.android)
+    ksp(libs.hilt.android.compiler)
+    implementation(libs.hilt.navigation.compose)
 
+    // Retrofit + OkHttp + Moshi
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.converter.moshi)
+    implementation(libs.okhttp)
+    implementation(libs.okhttp.logging)
+    implementation(libs.moshi)
+
+    // Coroutines
+    implementation(libs.kotlinx.coroutines.android)
+
+    // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
