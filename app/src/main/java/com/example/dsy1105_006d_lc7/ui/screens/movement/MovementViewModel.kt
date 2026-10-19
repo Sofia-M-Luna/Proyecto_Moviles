@@ -88,6 +88,43 @@ class MovementViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Procesa el contenido leído desde un código QR.
+     * Extrae el ID del producto (o su código de parte), lo busca en el catálogo
+     * y muestra automáticamente sus datos en el movimiento.
+     */
+    fun onQrCodeScanned(qrContent: String) {
+        val cleanContent = qrContent.trim()
+        if (cleanContent.isBlank()) return
+
+        val products = _uiState.value.allProducts
+
+        // 1. Búsqueda por ID numérico directo (ej: "1", "2", "3")
+        val directId = cleanContent.toLongOrNull()
+
+        // 2. Búsqueda por patrón de ID (ej: "ID: 1", "id=1")
+        val extractedId = directId ?: Regex("""\b(?:id[:=\s]+)?(\d+)\b""", RegexOption.IGNORE_CASE)
+            .find(cleanContent)?.groupValues?.get(1)?.toLongOrNull()
+
+        val productById = extractedId?.let { id -> products.find { it.id == id } }
+
+        // 3. Fallback: Búsqueda por código de repuesto (ej: "FIL-ACE-001")
+        val foundProduct = productById ?: products.find {
+            it.code.equals(cleanContent, ignoreCase = true)
+        }
+
+        if (foundProduct != null) {
+            onProductSelected(foundProduct)
+        } else {
+            _uiState.update {
+                it.copy(
+                    errorMessage = "No se encontró ningún repuesto con ID o código '$cleanContent'."
+                )
+            }
+        }
+    }
+
+
     fun onMovementTypeSelected(type: MovementTypeDomain) {
         val defaultReason = when (type) {
             MovementTypeDomain.ENTRY -> "Recepción de pedido de proveedor"

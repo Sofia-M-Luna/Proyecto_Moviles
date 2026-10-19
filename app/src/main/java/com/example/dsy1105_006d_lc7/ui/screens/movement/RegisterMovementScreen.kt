@@ -21,6 +21,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.dsy1105_006d_lc7.domain.model.MovementTypeDomain
 import com.example.dsy1105_006d_lc7.domain.model.UserRole
+import com.example.dsy1105_006d_lc7.ui.components.qr.QrScannerModal
 import com.example.dsy1105_006d_lc7.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -36,6 +37,7 @@ fun RegisterMovementScreen(
 
     var productExpanded by remember { mutableStateOf(false) }
     var showConfirmDialog by remember { mutableStateOf(false) }
+    var showQrScannerModal by remember { mutableStateOf(false) }
 
     val presetReasons = when (state.movementType) {
         MovementTypeDomain.ENTRY -> listOf("Recepción proveedor", "Compra local urgente", "Devolución a bodega")
@@ -90,56 +92,144 @@ fun RegisterMovementScreen(
                 }
             }
 
-            // ── Selector de Producto ──
-            Text(
-                text = "1. Seleccionar Repuesto",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-
-            ExposedDropdownMenuBox(
-                expanded = productExpanded,
-                onExpandedChange = { productExpanded = !productExpanded },
-                modifier = Modifier.fillMaxWidth()
+            // ── Selector de Producto (Dropdown o QR) ──
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                OutlinedTextField(
-                    value = state.selectedProduct?.let { "${it.code} - ${it.name}" }
-                        ?: "Seleccione un repuesto",
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("Repuesto de Taller") },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = productExpanded) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .menuAnchor()
+                Text(
+                    text = "1. Seleccionar Repuesto",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
                 )
-                ExposedDropdownMenu(
-                    expanded = productExpanded,
-                    onDismissRequest = { productExpanded = false }
+                TextButton(
+                    onClick = { showQrScannerModal = true },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
                 ) {
-                    state.allProducts.forEach { product ->
-                        DropdownMenuItem(
-                            text = {
-                                Column {
-                                    Text(
-                                        "${product.code} - ${product.name}",
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                    Text(
-                                        "Stock actual: ${product.currentStock} ${product.unitMeasure}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            },
-                            onClick = {
-                                viewModel.onProductSelected(product)
-                                productExpanded = false
+                    Icon(
+                        Icons.Default.QrCodeScanner,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Escanear QR", style = MaterialTheme.typography.labelMedium)
+                }
+            }
+
+            // Fila con Menú Desplegable y Botón de Escáner QR
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(modifier = Modifier.weight(1f)) {
+                    ExposedDropdownMenuBox(
+                        expanded = productExpanded,
+                        onExpandedChange = { productExpanded = !productExpanded },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        OutlinedTextField(
+                            value = state.selectedProduct?.let { "${it.code} - ${it.name}" }
+                                ?: "Seleccione de la lista...",
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Lista desplegable de repuestos") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = productExpanded) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .menuAnchor()
+                        )
+                        ExposedDropdownMenu(
+                            expanded = productExpanded,
+                            onDismissRequest = { productExpanded = false }
+                        ) {
+                            state.allProducts.forEach { product ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
+                                            Text(
+                                                "${product.code} - ${product.name}",
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                            Text(
+                                                "ID: #${product.id} • Stock: ${product.currentStock} ${product.unitMeasure}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        viewModel.onProductSelected(product)
+                                        productExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                FilledTonalIconButton(
+                    onClick = { showQrScannerModal = true },
+                    modifier = Modifier.size(56.dp)
+                ) {
+                    Icon(
+                        Icons.Default.QrCodeScanner,
+                        contentDescription = "Escanear QR del Repuesto",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
+            // Datos del Producto Seleccionado (por lista o escaneo QR)
+            state.selectedProduct?.let { product ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "ID: #${product.id}  •  Código: ${product.code}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = product.name,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Categoría: ${product.category} • Marca: ${product.brand}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        SuggestionChip(
+                            onClick = {},
+                            label = { Text("${product.currentStock} ${product.unitMeasure}") },
+                            icon = {
+                                Icon(
+                                    Icons.Default.Inventory2,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
                             }
                         )
                     }
                 }
             }
+
 
             // ── Selector de Tipo de Movimiento ──
             Text(
@@ -439,4 +529,15 @@ fun RegisterMovementScreen(
             }
         )
     }
+
+    // ── Modal de Escáner QR del Repuesto (CameraX + ML Kit) ──
+    if (showQrScannerModal) {
+        QrScannerModal(
+            onDismiss = { showQrScannerModal = false },
+            onQrCodeScanned = { scannedContent ->
+                viewModel.onQrCodeScanned(scannedContent)
+            }
+        )
+    }
 }
+
