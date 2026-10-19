@@ -98,6 +98,17 @@ fun AddEditProductScreen(
                     singleLine = true,
                     leadingIcon = {
                         Icon(Icons.Default.QrCode, contentDescription = null)
+                    },
+                    trailingIcon = {
+                        if (state.code.isNotBlank()) {
+                            IconButton(onClick = { viewModel.onQrCodeScanned(state.code) }) {
+                                Icon(
+                                    Icons.Default.Search,
+                                    contentDescription = "Buscar datos del repuesto",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
                     }
                 )
                 FilledTonalIconButton(
@@ -394,7 +405,7 @@ fun AddEditProductScreen(
         BarcodeScannerModal(
             onDismiss = { showScanner = false },
             onCodeScanned = { scannedCode ->
-                viewModel.onCodeChange(scannedCode)
+                viewModel.onQrCodeScanned(scannedCode)
             }
         )
     }

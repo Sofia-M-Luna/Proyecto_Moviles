@@ -64,16 +64,20 @@ class MovementViewModel @Inject constructor(
 
     private fun loadProducts() {
         viewModelScope.launch {
-            val products = productRepository.getAllProducts().firstOrNull() ?: emptyList()
-            val preselected = preselectedProductId?.let { id -> products.find { it.id == id } }
-                ?: products.firstOrNull()
-
-            _uiState.update {
-                it.copy(
-                    allProducts = products,
-                    selectedProductId = preselected?.id,
-                    selectedProduct = preselected
-                )
+            productRepository.getAllProducts().collect { products ->
+                _uiState.update { current ->
+                    val selected = if (current.selectedProductId != null) {
+                        products.find { it.id == current.selectedProductId } ?: current.selectedProduct
+                    } else {
+                        preselectedProductId?.let { id -> products.find { it.id == id } }
+                            ?: products.firstOrNull()
+                    }
+                    current.copy(
+                        allProducts = products,
+                        selectedProductId = selected?.id,
+                        selectedProduct = selected
+                    )
+                }
             }
         }
     }
@@ -97,29 +101,49 @@ class MovementViewModel @Inject constructor(
         val cleanContent = qrContent.trim()
         if (cleanContent.isBlank()) return
 
-        val products = _uiState.value.allProducts
+        viewModelScope.launch {
+            // 1. Búsqueda por ID numérico directo (ej: "1", "2", "3")
+            val directId = cleanContent.toLongOrNull()
 
-        // 1. Búsqueda por ID numérico directo (ej: "1", "2", "3")
-        val directId = cleanContent.toLongOrNull()
+            // 2. Búsqueda por patrón explícito de ID (ej: "ID: 1", "id=1", "id 1", "producto: 1", "{"id": 1}", "?id=1")
+            val extractedId = directId
+                ?: Regex("""(?i)\b(?:id|producto|product)[\s:=]+(\d+)\b""").find(cleanContent)?.groupValues?.get(1)?.toLongOrNull()
+                ?: Regex("""\"id\"\s*:\s*(\d+)""").find(cleanContent)?.groupValues?.get(1)?.toLongOrNull()
+                ?: Regex("""[?&]id=(\d+)""").find(cleanContent)?.groupValues?.get(1)?.toLongOrNull()
 
-        // 2. Búsqueda por patrón de ID (ej: "ID: 1", "id=1")
-        val extractedId = directId ?: Regex("""\b(?:id[:=\s]+)?(\d+)\b""", RegexOption.IGNORE_CASE)
-            .find(cleanContent)?.groupValues?.get(1)?.toLongOrNull()
+            val products = _uiState.value.allProducts
 
-        val productById = extractedId?.let { id -> products.find { it.id == id } }
+            // Buscar en memoria primero
+            var foundProduct = extractedId?.let { id -> products.find { it.id == id } }
 
-        // 3. Fallback: Búsqueda por código de repuesto (ej: "FIL-ACE-001")
-        val foundProduct = productById ?: products.find {
-            it.code.equals(cleanContent, ignoreCase = true)
-        }
+            // Si no está en memoria, consultar repositorio por ID
+            if (foundProduct == null && extractedId != null) {
+                foundProduct = productRepository.getProductById(extractedId)
+            }
 
-        if (foundProduct != null) {
-            onProductSelected(foundProduct)
-        } else {
-            _uiState.update {
-                it.copy(
-                    errorMessage = "No se encontró ningún repuesto con ID o código '$cleanContent'."
-                )
+            // 3. Fallback: Búsqueda por código de repuesto (ej: "FIL-ACE-001")
+            if (foundProduct == null) {
+                foundProduct = products.find { it.code.equals(cleanContent, ignoreCase = true) }
+            }
+            if (foundProduct == null) {
+                foundProduct = productRepository.getProductByCode(cleanContent)
+            }
+
+            // Fallback general en catálogo
+            if (foundProduct == null) {
+                val all = productRepository.getAllProducts().firstOrNull() ?: emptyList()
+                foundProduct = (extractedId?.let { id -> all.find { it.id == id } })
+                    ?: all.find { it.code.equals(cleanContent, ignoreCase = true) }
+            }
+
+            if (foundProduct != null) {
+                onProductSelected(foundProduct)
+            } else {
+                _uiState.update {
+                    it.copy(
+                        errorMessage = "No se encontró ningún repuesto con ID o código '$cleanContent'."
+                    )
+                }
             }
         }
     }

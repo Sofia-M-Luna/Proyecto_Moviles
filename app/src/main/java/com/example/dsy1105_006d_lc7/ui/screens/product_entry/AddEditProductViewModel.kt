@@ -66,15 +66,23 @@ class AddEditProductViewModel @Inject constructor(
 
     private fun loadDropdownData() {
         viewModelScope.launch {
-            val suppliers = supplierRepository.getActiveSuppliers().firstOrNull() ?: emptyList()
-            val locations = locationRepository.getAllLocations().firstOrNull() ?: emptyList()
-            _uiState.update {
-                it.copy(
-                    suppliers = suppliers,
-                    locations = locations,
-                    supplierId = suppliers.firstOrNull()?.id ?: 1L,
-                    locationId = locations.firstOrNull()?.id
-                )
+            supplierRepository.getActiveSuppliers().collect { suppliers ->
+                _uiState.update { current ->
+                    current.copy(
+                        suppliers = suppliers,
+                        supplierId = if (current.supplierId in suppliers.map { it.id }) current.supplierId else (suppliers.firstOrNull()?.id ?: 1L)
+                    )
+                }
+            }
+        }
+        viewModelScope.launch {
+            locationRepository.getAllLocations().collect { locations ->
+                _uiState.update { current ->
+                    current.copy(
+                        locations = locations,
+                        locationId = current.locationId ?: locations.firstOrNull()?.id
+                    )
+                }
             }
         }
     }
@@ -106,6 +114,78 @@ class AddEditProductViewModel @Inject constructor(
                 }
             } else {
                 _uiState.update { it.copy(isLoading = false, errorMessage = "Producto no encontrado") }
+            }
+        }
+    }
+
+    /**
+     * Procesa un código QR o de barras escaneado (o ingresado).
+     * Si contiene el ID de un producto o su código de parte, busca el producto en la base de datos
+     * y rellena automáticamente todos los campos del formulario.
+     */
+    fun onQrCodeScanned(qrContent: String) {
+        val cleanContent = qrContent.trim()
+        if (cleanContent.isBlank()) return
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+
+            // 1. Extraer ID numérico directo (ej: "1", "2")
+            val directId = cleanContent.toLongOrNull()
+
+            // 2. Extraer ID con patrones comunes: "ID: 1", "id=1", "id: 1", "producto: 1", "{"id": 1}", "?id=1"
+            val extractedId = directId
+                ?: Regex("""(?i)\b(?:id|producto|product)[\s:=]+(\d+)\b""").find(cleanContent)?.groupValues?.get(1)?.toLongOrNull()
+                ?: Regex("""\"id\"\s*:\s*(\d+)""").find(cleanContent)?.groupValues?.get(1)?.toLongOrNull()
+                ?: Regex("""[?&]id=(\d+)""").find(cleanContent)?.groupValues?.get(1)?.toLongOrNull()
+
+            // Buscar en repositorio por ID primero
+            var foundProduct: Product? = extractedId?.let { productRepository.getProductById(it) }
+
+            // Si no se encuentra por ID, buscar por código exacto de repuesto (ej: "FIL-ACE-001")
+            if (foundProduct == null) {
+                foundProduct = productRepository.getProductByCode(cleanContent)
+            }
+
+            // Fallback: buscar en el catálogo completo
+            if (foundProduct == null) {
+                val allProducts = productRepository.getAllProducts().firstOrNull() ?: emptyList()
+                foundProduct = (extractedId?.let { id -> allProducts.find { it.id == id } })
+                    ?: allProducts.find { it.code.equals(cleanContent, ignoreCase = true) }
+            }
+
+            if (foundProduct != null) {
+                // Rellenar automáticamente todos los campos del formulario con los datos del repuesto
+                _uiState.update { current ->
+                    current.copy(
+                        isLoading = false,
+                        isEditing = true,
+                        productId = foundProduct.id,
+                        code = foundProduct.code,
+                        name = foundProduct.name,
+                        description = foundProduct.description,
+                        category = foundProduct.category,
+                        brand = foundProduct.brand,
+                        unitMeasure = foundProduct.unitMeasure,
+                        currentStock = foundProduct.currentStock.toString(),
+                        minStock = foundProduct.minStock.toString(),
+                        suggestedReplenishment = foundProduct.suggestedReplenishment.toString(),
+                        referenceCostPrice = foundProduct.referenceCostPrice.toInt().toString(),
+                        referenceSalePrice = foundProduct.referenceSalePrice.toInt().toString(),
+                        supplierId = foundProduct.supplierId ?: (current.suppliers.firstOrNull()?.id ?: 1L),
+                        locationId = foundProduct.locationId ?: current.locationId,
+                        errorMessage = null
+                    )
+                }
+            } else {
+                // Si no existe, dejamos el código en el campo para registrar un nuevo producto
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        code = cleanContent,
+                        errorMessage = "No se encontró ningún repuesto registrado con ID o código '$cleanContent'. Se asignó al código para nuevo registro."
+                    )
+                }
             }
         }
     }
